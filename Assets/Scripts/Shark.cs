@@ -1,56 +1,165 @@
 using UnityEngine;
+using System.Collections.Generic;
 
 public class Shark : MonoBehaviour
 {
-    enum SharkState { Swimming, Chase, Feeding }
+    public float speed = 3f;
+    public float visionDistance = 5f; // how far the shark can see
+    public float eatRange = 0.5f;
 
-    [Header("Movement")]
-    public float swimSpeed = 3f;
-    public float rayCheckDistance = 5f;
-    public float turnCooldown = 0.5f; // seconds to wait before next turn
+    public float hunger = 100f;
+    public float hungerDepletionRate = 1f; // per second
+    public float hungerGainFromFood = 50f;
 
-    private int moveDirection = -1; // 1 = right, -1 = left
-    private float turnTimer = 0f;
+    private Vector2 moveDir = Vector2.right;
+    private GameObject targetFish = null;
+    private SpriteRenderer sr;
+
+    //Jellyfish Poison
+    public bool isPoisoned = false;
+    public float poisonDuration = 15f;
+    public float poisonTimer = 0f;
+    private Color originalColor;
 
     void Start()
     {
-        // Randomly start going left or right
-        moveDirection = -1;
-        FaceDirection();
+        //SR
+        sr = GetComponent<SpriteRenderer>();
+        originalColor = sr.color;
+
+        //Random direction
+        moveDir = Random.value > 0.5f ? Vector2.right : Vector2.left;
+        FlipSprite(moveDir);
     }
 
     void Update()
     {
-        //Timer to avoid turning constantly when hitting wall
-        turnTimer -= Time.deltaTime;
+        //Poison Management
+        if(isPoisoned){
+            poisonTimer += Time.deltaTime;
+            hungerDepletionRate = 2.5f;
+            sr.color = Color.green;
 
-        // Move fish
-        transform.Translate(Vector2.right * moveDirection * swimSpeed * Time.deltaTime, Space.World);
+            if (poisonTimer >= poisonDuration)
+            {
+                isPoisoned = false;
+                poisonTimer = 0f;
+                hungerDepletionRate = 1f;
+                sr.color = originalColor;
+            }
+        }
+        
+        //Hunger Management
+        hunger -= Time.deltaTime * hungerDepletionRate;
+        hunger = Mathf.Clamp(hunger, 0, 100);
 
-        // Raycast in front
-        RaycastHit2D hit = Physics2D.Raycast(transform.position, Vector2.right * moveDirection, rayCheckDistance);
-        if (hit && hit.collider.CompareTag("Wall") && turnTimer <= 0f)
+        if (hunger <= 0)
         {
-            TurnAround();
+            Die();
+            return;
+        }
+
+        // Sense environment for fish only if hungry
+        if (hunger < 80f)
+            SenseEnvironment();
+
+        // Move
+        PatrolOrChase();
+    }
+
+    void PatrolOrChase()
+    {
+        Vector2 moveVector = moveDir * speed * Time.deltaTime;
+
+        if (targetFish != null)
+        {
+            // Move towards target fish
+            Vector2 dir = ((Vector2)targetFish.transform.position - (Vector2)transform.position).normalized;
+            moveVector = dir * speed * Time.deltaTime;
+
+            // Flip sprite toward fish
+            FlipSprite(dir);
+
+            // Check if in eat range
+            if (Vector2.Distance(transform.position, targetFish.transform.position) <= eatRange)
+            {
+                EatFish();
+            }
+        }
+
+        // Apply movement
+        transform.Translate(moveVector);
+
+        // Horizontal screen bounds check
+        if (transform.position.x > 20f)
+        {
+            transform.position = new Vector2(20f, transform.position.y);
+            moveDir = Vector2.left;
+            FlipSprite(moveDir);
+        }
+        else if (transform.position.x < -20f)
+        {
+            transform.position = new Vector2(-20f, transform.position.y);
+            moveDir = Vector2.right;
+            FlipSprite(moveDir);
         }
     }
 
-    void TurnAround()
+    void SenseEnvironment()
     {
-        moveDirection *= -1;
-        FaceDirection();
+        RaycastHit2D hit = Physics2D.Raycast(transform.position, moveDir, visionDistance);
 
-        // Push fish slightly away from the wall so it doesn’t trigger again immediately
-        transform.position += Vector3.right * moveDirection * 0.2f;
+        if (hit.collider != null)
+        {
+            Debug.DrawLine(transform.position, hit.point, Color.red);
 
-        // Set cooldown
-        turnTimer = turnCooldown;
+            if (hit.collider.CompareTag("Fish"))
+            {
+                targetFish = hit.collider.gameObject;
+            }
+
+            if (hit.collider.CompareTag("Wall"))
+            {
+                moveDir = -moveDir;
+                FlipSprite(moveDir);
+            }
+        }
+        else
+        {
+            Debug.DrawRay(transform.position, moveDir * visionDistance, Color.green);
+            targetFish = null; // no fish in sight
+        }
     }
 
-    void FaceDirection()
+    void OnTriggerEnter2D(Collider2D other){
+        if (other.CompareTag("Jellyfish"))
+        {
+            isPoisoned = true;
+        }
+    }
+
+    void EatFish()
     {
-        Vector3 scale = transform.localScale;
-        scale.x = Mathf.Abs(scale.x) * -moveDirection;
-        transform.localScale = scale;
+        if (targetFish != null)
+        {
+            Destroy(targetFish);
+            hunger += hungerGainFromFood;
+            hunger = Mathf.Min(hunger, 100);
+            targetFish = null;
+        }
+    }
+
+    void FlipSprite(Vector2 dir)
+    {
+        if ((dir.x > 0 && transform.localScale.x < 0) || (dir.x < 0 && transform.localScale.x > 0))
+        {
+            transform.localScale = new Vector3(-transform.localScale.x, transform.localScale.y, transform.localScale.z);
+        }
+    }
+
+    void Die()
+    {
+        // Simple destroy for now; could add float-up or other animation
+        Destroy(gameObject);
     }
 }

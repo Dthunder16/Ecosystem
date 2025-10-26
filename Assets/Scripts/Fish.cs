@@ -1,113 +1,315 @@
 using UnityEngine;
+using System.Collections;
+using System.Collections.Generic;
 
-[RequireComponent(typeof(CircleCollider2D))]
-public class Fish : MonoBehaviour
+public class Fish2D : MonoBehaviour
 {
-    // States
-    enum FishState { Swimming, Fleeing, Feeding }
-    FishState currentState = FishState.Swimming;
+    public float speed = 2f;
+    public float hunger = 100f;
+    public float hungerDepletionRate = 1f;
+    public float eatRange = 0.5f;
+    public float hungerGainFromFood = 40f;
 
-    public float swimSpeed = 1f;
-    public float fleeSpeed = 6f;
-    public float fleeDuration = 0.5f;
-    public float feedTime = 3f;
+    public float breedingCooldown = 10f;
+    private float breedTimer = 0f;
 
-    float feedTimer = 0f;
-    float fleeTimer = 0f;
+    private string state = "Idle";
+    private GameObject foodTarget;
+    private Vector2 moveDir = Vector2.right;
 
-    [Header("Wall Detection")]
-    [SerializeField] private float rayCheckDistance = 1.0f;
-    [SerializeField] private float turnCooldown = 0.5f;
-    private float turnTimer = 0f;
+    // Raycasting
+    public float visionDistance = 3f; // how far the fish can see
 
-    private int moveDirection = 1; // 1 = right, -1 = left
-    private CircleCollider2D fishCollider;
+    // Flee State Vars
+    public float fleeSpeedMultiplier = 2f;
+    public float fleeDuration = 2f;
+    public float fleeEnergyCost = 10f;
+    private bool isFleeing = false;
+    private float fleeTimer = 0f;
+    private float fleeCooldown = 0f;
+
+    //Going back to original position after feeding
+    private float verticalOffset = 0f;
+    private bool movingUpAfterFeeding = false;
+    public float upperBoundY = 5f;
+
+    private SpriteRenderer sr;
+
+    //Jellyfish Poison
+    public bool isPoisoned = false;
+    public float poisonDuration = 15f;
+    public float poisonTimer = 0f;
+    private Color originalColor;
 
     void Start()
     {
-        moveDirection = Random.value > 0.5f ? 1 : -1;
-        fishCollider = GetComponent<CircleCollider2D>();
-        FaceDirection();
+        //SR
+        sr = GetComponent<SpriteRenderer>();
+        originalColor = sr.color;
+
+        // Random initial direction (left or right)
+        if (Random.value > 0.5f)
+            moveDir = Vector2.left;
+
+        FlipSprite(moveDir);
     }
 
     void Update()
     {
-        turnTimer -= Time.deltaTime;
+        //Poison Management
+        if(isPoisoned){
+            Debug.Log("Is poisoned");
+            poisonTimer += Time.deltaTime;
+            hungerDepletionRate = 2.5f;
+            sr.color = Color.green;
+            
+            if (poisonTimer >= poisonDuration)
+            {
+                isPoisoned = false;
+                poisonTimer = 0f;
+                hungerDepletionRate = 1f;
+                sr.color = originalColor;
+            }
+        }
 
-        switch (currentState)
+        // --- Hunger Management ---
+        hunger -= Time.deltaTime * hungerDepletionRate;
+        hunger = Mathf.Clamp(hunger, 0, 100);
+
+        if (hunger <= 0)
         {
-            case FishState.Swimming:
-                Swim();
+            Die();
+            return;
+        }
+
+        // --- State Machine ---
+        switch (state)
+        {
+            case "Idle":
+                Patrol();
+                if (hunger < 50) state = "FindFood";
                 break;
 
-            case FishState.Fleeing:
+            case "FindFood":
+                FindFood();
+                break;
+
+            case "Flee":
                 Flee();
                 break;
 
-            case FishState.Feeding:
-                Feed();
+            case "Eat":
+                EatFood();
                 break;
+
+            case "Dead":
+                break;
+        }
+
+        // --- Breeding cooldown ---
+        breedTimer -= Time.deltaTime;
+
+        // Flee Cooldown
+        if (fleeCooldown > 0)
+            fleeCooldown -= Time.deltaTime;
+
+        // Sense Environment
+        SenseEnvironment();
+    }
+
+    void Patrol()
+    {
+        // Horizontal movement
+        Vector2 horizontalMove = moveDir * speed * Time.deltaTime;
+
+        // Vertical movement if moving up after feeding
+        float moveY = 0f;
+        if (movingUpAfterFeeding)
+        {
+            moveY = Mathf.Min(verticalOffset, speed * 0.5f * Time.deltaTime);
+
+            // Clamp so fish doesn't go above upperBoundY
+            if (transform.position.y + moveY > upperBoundY)
+            {
+                moveY = upperBoundY - transform.position.y;
+                movingUpAfterFeeding = false; // stop moving up if hit ceiling
+            }
+
+            verticalOffset -= moveY;
+
+            if (verticalOffset <= 0f)
+                movingUpAfterFeeding = false;
+        }
+
+        // Apply movement in **world space**
+        transform.Translate(new Vector2(horizontalMove.x, moveY), Space.World);
+
+        // Horizontal bounds check
+        if (transform.position.x > 20f)
+        {
+            transform.position = new Vector2(20f, transform.position.y);
+            moveDir = Vector2.left;
+            FlipSprite(moveDir);
+        }
+        else if (transform.position.x < -20f)
+        {
+            transform.position = new Vector2(-20f, transform.position.y);
+            moveDir = Vector2.right;
+            FlipSprite(moveDir);
+        }
+
+        // Flip sprite if moving horizontally
+        if (horizontalMove.x != 0)
+            FlipSprite(horizontalMove);
+    }
+
+    void FindFood()
+    {
+        if (foodTarget == null)
+        {
+            foodTarget = FindClosestFood();
+            if (foodTarget == null)
+            {
+                Patrol(); // no food found, keep moving
+                return;
+            }
+        }
+
+        // Move toward food
+        Vector2 dir = ((Vector2)foodTarget.transform.position - (Vector2)transform.position).normalized;
+        transform.Translate(dir * speed * Time.deltaTime);
+
+        // Flip toward direction of movement
+        FlipSprite(dir);
+
+        // Check if close enough to eat
+        if (Vector2.Distance(transform.position, foodTarget.transform.position) <= eatRange)
+        {
+            state = "Eat";
         }
     }
 
-    void Swim()
+    void EatFood()
     {
-        // Move
-        transform.Translate(Vector2.right * moveDirection * swimSpeed * Time.deltaTime, Space.World);
-
-        // Check for walls
-        RaycastHit2D hit = Physics2D.Raycast(transform.position, Vector2.right * moveDirection, rayCheckDistance);
-        if (hit && hit.collider.CompareTag("Wall") && turnTimer <= 0f)
+        if (foodTarget != null)
         {
-            TurnAround();
+            Destroy(foodTarget);
+            hunger += hungerGainFromFood;
+            hunger = Mathf.Min(hunger, 100);
         }
 
-        // Randomly decide to feed sometimes
-        if (Random.value < 0.0005f)
-            SwitchState(FishState.Feeding);
+        foodTarget = null;
+
+        //go back to previous position after eating
+        verticalOffset = Random.Range(5f, 16f);
+        movingUpAfterFeeding = true;
+
+        state = "Idle";
     }
 
     void Flee()
     {
-        transform.Translate(Vector2.right * moveDirection * fleeSpeed * Time.deltaTime, Space.World);
-        fleeTimer += Time.deltaTime;
+        if (!isFleeing)
+        {
+            isFleeing = true;
+            fleeTimer = fleeDuration;
+            hunger -= fleeEnergyCost; // lose some energy
+            hunger = Mathf.Max(0, hunger);
+        }
 
-        if (fleeTimer >= fleeDuration)
-            SwitchState(FishState.Swimming);
+        // Move opposite direction quickly
+        transform.Translate(moveDir * speed * fleeSpeedMultiplier * Time.deltaTime);
+
+        fleeTimer -= Time.deltaTime;
+
+        if (fleeTimer <= 0)
+        {
+            isFleeing = false;
+            state = "Idle"; // return to normal behavior
+        }
     }
 
-    void Feed()
+    void Die()
     {
-        feedTimer += Time.deltaTime;
-        transform.position += Vector3.up * Mathf.Sin(Time.time * 2f) * 0.001f;
-
-        if (feedTimer >= feedTime)
-            SwitchState(FishState.Swimming);
+        speed = 0;
+        transform.localScale = new Vector3(transform.localScale.x, -Mathf.Abs(transform.localScale.y), transform.localScale.z);
+        StartCoroutine(FloatUpAndDestroy());
     }
 
-    void TurnAround()
+    //Helper Functions
+
+    GameObject FindClosestFood()
     {
-        moveDirection *= -1;
-        FaceDirection();
+        GameObject[] allFood = GameObject.FindGameObjectsWithTag("Seaweed");
+        GameObject closest = null;
+        float minDist = Mathf.Infinity;
 
-        // Push away slightly to avoid retrigger
-        transform.position += Vector3.right * moveDirection * 0.2f;
+        foreach (GameObject food in allFood)
+        {
+            float dist = Vector2.Distance(transform.position, food.transform.position);
+            if (dist < minDist)
+            {
+                minDist = dist;
+                closest = food;
+            }
+        }
 
-        // Cooldown
-        turnTimer = turnCooldown;
+        return closest;
     }
 
-    void FaceDirection()
-    {
-        Vector3 scale = transform.localScale;
-        scale.x = Mathf.Abs(scale.x) * moveDirection;
-        transform.localScale = scale;
+    void OnTriggerEnter2D(Collider2D other){
+        if (other.CompareTag("Jellyfish"))
+        {
+            isPoisoned = true;
+        }
     }
 
-    void SwitchState(FishState newState)
+    IEnumerator FloatUpAndDestroy()
     {
-        currentState = newState;
-        feedTimer = 0f;
-        fleeTimer = 0f;
+        float timer = 0f;
+        while (timer < 5f)
+        {
+            transform.position += Vector3.up * Time.deltaTime * 0.5f;
+            timer += Time.deltaTime;
+            yield return null;
+        }
+        Destroy(gameObject);
+    }
+
+    void SenseEnvironment()
+    {
+        RaycastHit2D hit = Physics2D.Raycast(transform.position, moveDir, visionDistance);
+
+        if (hit.collider != null)
+        {
+            Debug.DrawLine(transform.position, hit.point, Color.red);
+
+            if (hit.collider.CompareTag("Wall"))
+            {
+                moveDir = -moveDir;
+                FlipSprite(moveDir);
+            }
+
+            if (hit.collider.CompareTag("Shark") && !isFleeing && fleeCooldown <= 0)
+            {
+                moveDir = -moveDir;
+                FlipSprite(moveDir);
+
+                state = "Flee";
+                fleeCooldown = 3f;
+            }
+        }
+        else
+        {
+            Debug.DrawRay(transform.position, moveDir * visionDistance, Color.green);
+        }
+    }
+
+    void FlipSprite(Vector2 newDir)
+    {
+        if ((newDir.x > 0 && transform.localScale.x < 0) || (newDir.x < 0 && transform.localScale.x > 0))
+        {
+            transform.localScale = new Vector3(-transform.localScale.x, transform.localScale.y, transform.localScale.z);
+        }
     }
 }
