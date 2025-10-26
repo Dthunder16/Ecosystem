@@ -72,7 +72,7 @@ public class Fish2D : MonoBehaviour
             }
         }
 
-        // --- Hunger Management ---
+        //Hunger Management
         hunger -= Time.deltaTime * hungerDepletionRate;
         hunger = Mathf.Clamp(hunger, 0, 100);
 
@@ -82,7 +82,7 @@ public class Fish2D : MonoBehaviour
             return;
         }
 
-        // --- State Machine ---
+        //State Machine
         switch (state)
         {
             case "Idle":
@@ -106,33 +106,31 @@ public class Fish2D : MonoBehaviour
                 break;
         }
 
-        // --- Breeding cooldown ---
+        //Breeding cooldown
         breedTimer -= Time.deltaTime;
 
-        // Flee Cooldown
+        //Flee Cooldown
         if (fleeCooldown > 0)
             fleeCooldown -= Time.deltaTime;
 
-        // Sense Environment
         SenseEnvironment();
     }
 
     void Patrol()
     {
-        // Horizontal movement
+        //Horizontal movement
         Vector2 horizontalMove = moveDir * speed * Time.deltaTime;
 
-        // Vertical movement if moving up after feeding
+        //Move up after eating
         float moveY = 0f;
         if (movingUpAfterFeeding)
         {
             moveY = Mathf.Min(verticalOffset, speed * 0.5f * Time.deltaTime);
 
-            // Clamp so fish doesn't go above upperBoundY
             if (transform.position.y + moveY > upperBoundY)
             {
                 moveY = upperBoundY - transform.position.y;
-                movingUpAfterFeeding = false; // stop moving up if hit ceiling
+                movingUpAfterFeeding = false; 
             }
 
             verticalOffset -= moveY;
@@ -141,10 +139,9 @@ public class Fish2D : MonoBehaviour
                 movingUpAfterFeeding = false;
         }
 
-        // Apply movement in **world space**
         transform.Translate(new Vector2(horizontalMove.x, moveY), Space.World);
 
-        // Horizontal bounds check
+        //Constrain Fish Movement to the boundaries
         if (transform.position.x > 20f)
         {
             transform.position = new Vector2(20f, transform.position.y);
@@ -158,7 +155,7 @@ public class Fish2D : MonoBehaviour
             FlipSprite(moveDir);
         }
 
-        // Flip sprite if moving horizontally
+        //Flip sprite
         if (horizontalMove.x != 0)
             FlipSprite(horizontalMove);
     }
@@ -170,19 +167,19 @@ public class Fish2D : MonoBehaviour
             foodTarget = FindClosestFood();
             if (foodTarget == null)
             {
-                Patrol(); // no food found, keep moving
+                Patrol(); //if there is no food go back to patrol
                 return;
             }
         }
 
-        // Move toward food
+        //Move toward food
         Vector2 dir = ((Vector2)foodTarget.transform.position - (Vector2)transform.position).normalized;
         transform.Translate(dir * speed * Time.deltaTime);
 
-        // Flip toward direction of movement
+        //Flip toward direction of movement
         FlipSprite(dir);
 
-        // Check if close enough to eat
+        //Check if close enough to eat
         if (Vector2.Distance(transform.position, foodTarget.transform.position) <= eatRange)
         {
             state = "Eat";
@@ -213,11 +210,11 @@ public class Fish2D : MonoBehaviour
         {
             isFleeing = true;
             fleeTimer = fleeDuration;
-            hunger -= fleeEnergyCost; // lose some energy
+            hunger -= fleeEnergyCost;
             hunger = Mathf.Max(0, hunger);
         }
 
-        // Move opposite direction quickly
+        //Move opposite direction quickly
         transform.Translate(moveDir * speed * fleeSpeedMultiplier * Time.deltaTime);
 
         fleeTimer -= Time.deltaTime;
@@ -225,7 +222,7 @@ public class Fish2D : MonoBehaviour
         if (fleeTimer <= 0)
         {
             isFleeing = false;
-            state = "Idle"; // return to normal behavior
+            state = "Idle";
         }
     }
 

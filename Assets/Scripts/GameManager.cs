@@ -30,7 +30,6 @@ public class GameManager : MonoBehaviour
         SpawnAllAnimals();
     }
 
-    // Update is called once per frame
     void Update()
     {
         MaintainSeaweedPopulation();
@@ -67,10 +66,8 @@ public class GameManager : MonoBehaviour
 
     void MaintainSeaweedPopulation()
     {
-        // Count current seaweed in the scene
         int currentCount = GameObject.FindGameObjectsWithTag("Seaweed").Length;
-
-        // Spawn more until we reach the max
+        
         while (currentCount < maxSeaweedCount)
         {
             if (TrySpawnSeaweed())

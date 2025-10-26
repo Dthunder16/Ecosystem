@@ -14,7 +14,7 @@ public class JellyFish : MonoBehaviour
     // Breeding
     public float breedingCooldown = 10f;
     private float breedTimer = 0f;
-    public GameObject jellyfishPrefab; // assign in inspector
+    public GameObject jellyfishPrefab; //use this for breeding
 
     private string state = "Idle";
     private GameObject foodTarget;
@@ -29,21 +29,21 @@ public class JellyFish : MonoBehaviour
     {
         sr = GetComponent<SpriteRenderer>();
 
-        // Random initial direction
+        //Random initial direction
         if (Random.value > 0.5f)
             moveDir = Vector2.left;
     }
 
     void Update()
     {
-        // Hunger
+        //Hunger
         hunger -= Time.deltaTime * hungerDepletionRate;
         hunger = Mathf.Clamp(hunger, 0, 100);
 
-        // Breeding cooldown
+        //Breeding cooldown
         breedTimer -= Time.deltaTime;
 
-        // State Machine
+        //State Machine
         switch (state)
         {
             case "Idle":
@@ -87,7 +87,7 @@ public class JellyFish : MonoBehaviour
 
         transform.Translate(new Vector2(horizontalMove.x, moveY), Space.World);
 
-        // Horizontal bounds
+        //Horizontal bounds
         if (transform.position.x > 20f)
         {
             transform.position = new Vector2(20f, transform.position.y);
@@ -132,11 +132,11 @@ public class JellyFish : MonoBehaviour
 
         foodTarget = null;
 
-        // Float upward a bit after eating
+        //Float upward a bit after eating
         verticalOffset = verticalOffsetAfterEating;
         movingUpAfterFeeding = true;
 
-        // Go to breeding state if cooldown is over
+        //Go to breeding state if cooldown is over
         if (breedTimer <= 0)
             state = "Breed";
         else
@@ -150,7 +150,7 @@ public class JellyFish : MonoBehaviour
             Vector2 spawnPos = (Vector2)transform.position + new Vector2(Random.Range(-1f, 1f), Random.Range(-1f, 1f));
             Instantiate(jellyfishPrefab, spawnPos, Quaternion.identity);
 
-            breedTimer = breedingCooldown; // reset cooldown
+            breedTimer = breedingCooldown;
         }
 
         state = "Idle";

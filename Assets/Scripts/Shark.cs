@@ -1,96 +1,87 @@
 using UnityEngine;
-using System.Collections.Generic;
+using System.Collections;
 
 public class Shark : MonoBehaviour
 {
     public float speed = 3f;
-    public float visionDistance = 5f; // how far the shark can see
+    public float visionDistance = 5f;
     public float eatRange = 0.5f;
 
     public float hunger = 100f;
-    public float hungerDepletionRate = 1f; // per second
+    public float hungerDepletionRate = 1f;
     public float hungerGainFromFood = 50f;
 
     private Vector2 moveDir = Vector2.right;
     private GameObject targetFish = null;
     private SpriteRenderer sr;
+    private Color originalColor;
 
-    //Jellyfish Poison
+    //State machine
+    private enum SharkState { Idle, Hunt, Eat, Dead }
+    private SharkState currentState = SharkState.Idle;
+
+    //Poison system
     public bool isPoisoned = false;
     public float poisonDuration = 15f;
-    public float poisonTimer = 0f;
-    private Color originalColor;
+    private float poisonTimer = 0f;
 
     void Start()
     {
-        //SR
         sr = GetComponent<SpriteRenderer>();
         originalColor = sr.color;
 
-        //Random direction
+        //Start with a random direction
         moveDir = Random.value > 0.5f ? Vector2.right : Vector2.left;
         FlipSprite(moveDir);
     }
 
     void Update()
     {
-        //Poison Management
-        if(isPoisoned){
-            poisonTimer += Time.deltaTime;
-            hungerDepletionRate = 2.5f;
-            sr.color = Color.green;
+        //Call Poison
+        HandlePoison();
 
-            if (poisonTimer >= poisonDuration)
-            {
-                isPoisoned = false;
-                poisonTimer = 0f;
-                hungerDepletionRate = 1f;
-                sr.color = originalColor;
-            }
-        }
-        
-        //Hunger Management
+        //Handle hunger and death
         hunger -= Time.deltaTime * hungerDepletionRate;
         hunger = Mathf.Clamp(hunger, 0, 100);
 
         if (hunger <= 0)
         {
-            Die();
-            return;
+            ChangeState(SharkState.Dead);
         }
 
-        // Sense environment for fish only if hungry
-        if (hunger < 80f)
-            SenseEnvironment();
+        //State Machine
+        switch (currentState)
+        {
+            case SharkState.Idle:
+                Patrol();
+                if (hunger < 80f)
+                {
+                    ChangeState(SharkState.Hunt);
+                }
+                break;
 
-        // Move
-        PatrolOrChase();
+            case SharkState.Hunt:
+                HuntFish();
+                break;
+
+            case SharkState.Eat:
+                EatFish();
+                ChangeState(SharkState.Idle);
+                break;
+
+            case SharkState.Dead:
+                Die();
+                break;
+        }
     }
 
-    void PatrolOrChase()
+    //State Functions
+
+    void Patrol()
     {
-        Vector2 moveVector = moveDir * speed * Time.deltaTime;
+        transform.Translate(moveDir * speed * Time.deltaTime);
 
-        if (targetFish != null)
-        {
-            // Move towards target fish
-            Vector2 dir = ((Vector2)targetFish.transform.position - (Vector2)transform.position).normalized;
-            moveVector = dir * speed * Time.deltaTime;
-
-            // Flip sprite toward fish
-            FlipSprite(dir);
-
-            // Check if in eat range
-            if (Vector2.Distance(transform.position, targetFish.transform.position) <= eatRange)
-            {
-                EatFish();
-            }
-        }
-
-        // Apply movement
-        transform.Translate(moveVector);
-
-        // Horizontal screen bounds check
+        // Horizontal bounds check
         if (transform.position.x > 20f)
         {
             transform.position = new Vector2(20f, transform.position.y);
@@ -103,6 +94,72 @@ public class Shark : MonoBehaviour
             moveDir = Vector2.right;
             FlipSprite(moveDir);
         }
+
+        // If hungry, start scanning for food
+        if (hunger < 80f)
+            SenseEnvironment();
+    }
+
+    void HuntFish()
+    {
+        if (targetFish == null)
+        {
+            SenseEnvironment();
+            Patrol();
+            return;
+        }
+
+        //Move towards target fish
+        Vector2 dir = ((Vector2)targetFish.transform.position - (Vector2)transform.position).normalized;
+        transform.Translate(dir * speed * Time.deltaTime);
+        FlipSprite(dir);
+
+        // Check if in range to eat
+        if (Vector2.Distance(transform.position, targetFish.transform.position) <= eatRange)
+        {
+            ChangeState(SharkState.Eat);
+        }
+    }
+
+    void EatFish()
+    {
+        if (targetFish != null)
+        {
+            Destroy(targetFish);
+            targetFish = null;
+            hunger += hungerGainFromFood;
+            hunger = Mathf.Min(hunger, 100);
+        }
+    }
+
+    void Die()
+    {
+        //Flip belly up for dead
+        sr.color = Color.gray;
+        speed = 0;
+        transform.localScale = new Vector3(transform.localScale.x, -Mathf.Abs(transform.localScale.y), transform.localScale.z);
+
+        //Float up and disappear
+        StartCoroutine(FloatUpAndDestroy());
+    }
+
+    //Helper Functions
+
+    IEnumerator FloatUpAndDestroy()
+    {
+        float timer = 0f;
+        while (timer < 5f)
+        {
+            transform.position += Vector3.up * Time.deltaTime * 0.5f;
+            timer += Time.deltaTime;
+            yield return null;
+        }
+        Destroy(gameObject);
+    }
+
+    void ChangeState(SharkState newState)
+    {
+        currentState = newState;
     }
 
     void SenseEnvironment()
@@ -116,6 +173,7 @@ public class Shark : MonoBehaviour
             if (hit.collider.CompareTag("Fish"))
             {
                 targetFish = hit.collider.gameObject;
+                ChangeState(SharkState.Hunt);
             }
 
             if (hit.collider.CompareTag("Wall"))
@@ -127,39 +185,42 @@ public class Shark : MonoBehaviour
         else
         {
             Debug.DrawRay(transform.position, moveDir * visionDistance, Color.green);
-            targetFish = null; // no fish in sight
+            targetFish = null;
         }
     }
 
-    void OnTriggerEnter2D(Collider2D other){
+    void HandlePoison()
+    {
+        if (!isPoisoned)
+            return;
+
+        poisonTimer += Time.deltaTime;
+        hungerDepletionRate = 2.5f;
+        sr.color = Color.green;
+
+        if (poisonTimer >= poisonDuration)
+        {
+            isPoisoned = false;
+            poisonTimer = 0f;
+            hungerDepletionRate = 1f;
+            sr.color = originalColor;
+        }
+    }
+
+    void OnTriggerEnter2D(Collider2D other)
+    {
         if (other.CompareTag("Jellyfish"))
         {
             isPoisoned = true;
         }
     }
 
-    void EatFish()
-    {
-        if (targetFish != null)
-        {
-            Destroy(targetFish);
-            hunger += hungerGainFromFood;
-            hunger = Mathf.Min(hunger, 100);
-            targetFish = null;
-        }
-    }
-
     void FlipSprite(Vector2 dir)
     {
-        if ((dir.x > 0 && transform.localScale.x < 0) || (dir.x < 0 && transform.localScale.x > 0))
+        if ((dir.x > 0 && transform.localScale.x < 0) ||
+            (dir.x < 0 && transform.localScale.x > 0))
         {
             transform.localScale = new Vector3(-transform.localScale.x, transform.localScale.y, transform.localScale.z);
         }
-    }
-
-    void Die()
-    {
-        // Simple destroy for now; could add float-up or other animation
-        Destroy(gameObject);
     }
 }
