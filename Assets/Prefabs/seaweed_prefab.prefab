@@ -11,7 +11,7 @@ GameObject:
   - component: {fileID: 1578772002129130018}
   - component: {fileID: 4757616379542280717}
   - component: {fileID: 4246556942091899991}
-  m_Layer: 0
+  m_Layer: 4
   m_Name: seaweed_prefab
   m_TagString: Seaweed
   m_Icon: {fileID: 0}
