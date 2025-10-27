@@ -4,7 +4,7 @@ using System.Collections;
 public class Shark : MonoBehaviour
 {
     public float speed = 3f;
-    public float visionDistance = 5f;
+    public float visionDistance = 8f;
     public float eatRange = 0.5f;
 
     public float hunger = 100f;
@@ -82,15 +82,15 @@ public class Shark : MonoBehaviour
         transform.Translate(moveDir * speed * Time.deltaTime);
 
         // Horizontal bounds check
-        if (transform.position.x > 20f)
+        if (transform.position.x > 18f)
         {
-            transform.position = new Vector2(20f, transform.position.y);
+            transform.position = new Vector2(18f, transform.position.y);
             moveDir = Vector2.left;
             FlipSprite(moveDir);
         }
-        else if (transform.position.x < -20f)
+        else if (transform.position.x < -18f)
         {
-            transform.position = new Vector2(-20f, transform.position.y);
+            transform.position = new Vector2(-18f, transform.position.y);
             moveDir = Vector2.right;
             FlipSprite(moveDir);
         }

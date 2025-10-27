@@ -110,7 +110,6 @@ MonoBehaviour:
   hungerGainFromFood: 50
   isPoisoned: 0
   poisonDuration: 15
-  poisonTimer: 0
 --- !u!50 &7824126208557855230
 Rigidbody2D:
   serializedVersion: 5
@@ -137,7 +136,7 @@ Rigidbody2D:
   m_Interpolate: 0
   m_SleepingMode: 1
   m_CollisionDetection: 0
-  m_Constraints: 0
+  m_Constraints: 4
 --- !u!60 &7954101001755362193
 PolygonCollider2D:
   m_ObjectHideFlags: 0
